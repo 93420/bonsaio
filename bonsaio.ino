@@ -54,7 +54,7 @@ void setup()
 
 void loop()
 {
-  Sun sun(45.501, -73.567); // Montreal,CA
+  Sun sun(45.501, -73.567); // Coordinates for Montreal,CA
 
   // Initialize Smart plugs
 
