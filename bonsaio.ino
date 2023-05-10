@@ -26,6 +26,7 @@ unsigned long getTime()
   time(&now);
   return now;
 }
+
 KASAUtil kasaUtil;
 
 // Initialize WiFi
@@ -54,6 +55,8 @@ void setup()
 void loop()
 {
   Sun sun(45.501, -73.567); // Montreal,CA
+
+  // Initialize Smart plugs
 
   KASASmartPlug *Plug1 = kasaUtil.GetSmartPlug("Light");
   KASASmartPlug *Plug2 = kasaUtil.GetSmartPlug("Mist");
