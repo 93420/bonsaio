@@ -1,7 +1,8 @@
 #include <WiFi.h>
 #include <Sun.h>
-#include "Time.h"
-#include "KasaSmartPlug.h"
+#include <Time.h>
+#include <KasaSmartPlug.h>
+#include "DHT.h"
 
 // Replace with your network credentials
 const char *ssid = "myssid";
@@ -9,93 +10,151 @@ const char *password = "mywifipassword";
 
 // NTP server to request epoch time
 const char *ntpServer = "pool.ntp.org";
+const char *LIGHT_NAME = "Plug Rampe";
+const char *MIST_NAME = "Plug Mist";
+const char *FAN1_NAME = "Plug Fan 1";
+const char *FAN2_NAME = "Plug Fan 2";
 
-// Variable to save current epoch time
-unsigned long epochTime;
+// DHT22 settings
+#define DHT1PIN 22
+#define DHT2PIN 23
+#define DHTTYPE DHT22
+
+DHT dht1(DHT1PIN, DHTTYPE);
+DHT dht2(DHT2PIN, DHTTYPE);
 
 // Function that gets current epoch time
 unsigned long getTime()
 {
-  time_t now;
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
   {
-    // Serial.println("Failed to obtain time");
-    return (0);
+    Serial.println("Failed to obtain time");
+    return 0;
   }
-  time(&now);
-  return now;
+  return time(nullptr);
 }
-
-KASAUtil kasaUtil;
 
 // Initialize WiFi
 void initWiFi()
 {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi ..");
+  Serial.print("Connecting to WiFi ");
   while (WiFi.status() != WL_CONNECTED)
   {
     Serial.print('.');
     delay(1000);
   }
+  Serial.println("\nWiFi connected.");
+  Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
 void setup()
 {
-  int found;
   Serial.begin(115200);
   initWiFi();
   configTime(0, 0, ntpServer);
-  found = kasaUtil.ScanDevices();
+  dht1.begin();
+  dht2.begin();
 }
 
 void loop()
 {
+  // Get current epoch time
+  unsigned long epochTime = getTime();
+
+  // Initialize Sun object with location coordinates
   Sun sun(45.501, -73.567); // Coordinates for Montreal,CA
 
-  // Initialize Smart plugs
+  // Get sunrise and sunset times
+  unsigned long sunrise = sun.getRise(epochTime);
+  unsigned long sunset = sun.getSet(epochTime);
 
-  KASASmartPlug *Plug1 = kasaUtil.GetSmartPlug("Light");
-  KASASmartPlug *Plug2 = kasaUtil.GetSmartPlug("Mist");
-  KASASmartPlug *Plug3 = kasaUtil.GetSmartPlug("Fan1");
-  KASASmartPlug *Plug4 = kasaUtil.GetSmartPlug("Fan2");
+  // Initialize KASA utility object
+  KASAUtil kasaUtil;
 
-  Serial.print("Epoch Time: ");
-  Serial.println(epochTime);
+  // Scan for available KASA smart plugs
+  kasaUtil.ScanDevices();
 
-  epochTime = getTime();
-  unsigned long tm = epochTime;
+  // Get KASA smart plugs
+  KASASmartPlug *Plug1 = kasaUtil.GetSmartPlug(LIGHT_NAME);
+  KASASmartPlug *Plug2 = kasaUtil.GetSmartPlug(MIST_NAME);
+  KASASmartPlug *Plug3 = kasaUtil.GetSmartPlug(FAN1_NAME);
+  KASASmartPlug *Plug4 = kasaUtil.GetSmartPlug(FAN2_NAME);
 
-  unsigned long rise = sun.getRise(tm);
-  Serial.print("Sun rises at: ");
-  Serial.println(rise);
-
-  unsigned long set = sun.getSet(tm);
-  Serial.print("Sun sets at: ");
-  Serial.println(set);
-
-  if (epochTime >= sun.getRise(tm) && epochTime < sun.getSet(tm))
+  // Set state of light based on sunrise and sunset times
+  if (epochTime >= sunrise && epochTime < sunset)
   {
+    // Turn on light during the day
     Serial.println("It's day");
-    Plug1->SetRelayState(1);
+    if (Plug1->state == 0)
+    {
+      Plug1->SetRelayState(1);
+    }
   }
   else
   {
+    // Turn off light at night
     Serial.println("It's night");
-    Plug1->SetRelayState(0);
+    if (Plug1->state == 1)
+    {
+      Plug1->SetRelayState(0);
+    }
   }
 
-  Serial.println("Fans ON");
-  Plug3->SetRelayState(1);
-  Plug4->SetRelayState(1);
-  delay(5000);
-  Serial.println("Fan1 OFF");
-  Plug3->SetRelayState(0);
-  delay(5000);
-  Serial.println("Fan2 OFF");
-  Plug4->SetRelayState(0);
-  delay(300000);
+  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+  float h1 = dht1.readHumidity();
+  float h2 = dht2.readHumidity();
+  // Read temperature as Celsius (the default)
+  float t1 = dht1.readTemperature();
+  float t2 = dht2.readTemperature();
+
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(h1) || isnan(t1))
+  {
+    Serial.println(F("Failed to read from DHT 1 sensor!"));
+    return;
+  }
+  if (isnan(h2) || isnan(t2))
+  {
+    Serial.println(F("Failed to read from DHT 2 sensor!"));
+    return;
+  }
+
+  // Control fan1 and fan2
+  Serial.print(F("Humidity 1: "));
+  Serial.print(h1);
+  Serial.print(F("%  Temperature 1: "));
+  Serial.print(t1);
+  Serial.print(F("°C "));
+
+  Serial.print(F("Humidity 2: "));
+  Serial.print(h2);
+  Serial.print(F("%  Temperature 2 "));
+  Serial.print(t2);
+  Serial.print(F("°C "));
+
+  if (h1 >= 80 || t1 >= 30) //turn ON FAN 1 if humdity > 80% or Temp > 30°C
+  {
+    Serial.println("Fan1 ON");
+    Plug3->SetRelayState(1);
+  }
+  else
+  {
+    Serial.println("Fan1 OFF");
+    Plug3->SetRelayState(0);
+  }
+  if (h2 >= 70 || t2 >= 28) //turn ON FAN 2 if humdity > 70% or Temp > 28°C
+  {
+    Serial.println("Fan2 ON");
+    Plug4->SetRelayState(1);
+  }
+  else
+  {
+    Serial.println("Fan2 OFF");
+    Plug4->SetRelayState(0);
+  }
+  delay(30000);
 }
