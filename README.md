@@ -1,6 +1,6 @@
 <a href="https://imgbb.com/"><img src="https://i.ibb.co/JHpNY2n/bonsaio.png" alt="bonsaio" border="0"></a><br>
 
-## Controlling Smart Plugs Based on Sunrise and Sunset Time##
+## Controlling Smart Plugs Based on Sunrise and Sunset Time
 
 **Description:**\
 This script is designed to automatically control smart plugs based on the sunrise and sunset time. It uses an ESP32 board with a WiFi module to access the current time from an NTP (Network Time Protocol) server and a sunrise-sunset calculation module.
